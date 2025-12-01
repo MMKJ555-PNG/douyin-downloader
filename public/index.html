@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>极乐去水印工具 - 后端版</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Microsoft YaHei', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 800px;
+            width: 100%;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            color: #667eea;
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .badge {
+            display: inline-block;
+            background: #4caf50;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            margin-top: 10px;
+        }
+
+        .input-group {
+            margin-bottom: 20px;
+        }
+
+        .input-group label {
+            display: block;
+            margin-bottom: 10px;
+            color: #333;
+            font-weight: 600;
+        }
+
+        .input-wrapper {
+            display: flex;
+            gap: 10px;
+        }
+
+        input[type="text"] {
+            flex: 1;
+            padding: 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 16px;
+            transition: all 0.3s;
+        }
+
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .btn {
+            padding: 15px 30px;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        .loading.show {
+            display: block;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .video-container {
+            margin-top: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            display: none;
+        }
+
+        .video-container.show {
+            display: block;
+        }
+
+        .video-player {
+            width: 100%;
+            max-width: 100%;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            background: #000;
+        }
+
+        .video-info {
+            margin-top: 20px;
+            padding: 15px;
+            background: white;
+            border-radius: 10px;
+        }
+
+        .video-info h3 {
+            margin-bottom: 10px;
+            color: #333;
+        }
+
+        .video-info p {
+            color: #666;
+            margin: 5px 0;
+        }
+
+        .download-btn {
+            margin-top: 15px;
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 16px;
+            transition: all 0.3s;
+        }
+
+        .download-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .message {
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 20px;
+            display: none;
+        }
+
+        .message.show {
+            display: block;
+        }
+
+        .message.error {
+            background: #fee;
+            color: #c33;
+        }
+
+        .message.success {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+
+        .info-box {
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 20px;
+        }
+
+        .info-box h3 {
+            color: #1976d2;
+            margin-bottom: 10px;
+        }
+
+        .info-box ul {
+            margin-left: 20px;
+            color: #555;
+        }
+
+        .info-box li {
+            margin: 5px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎬 极乐去水印工具</h1>
+            <p>支持抖音、TikTok、快手、B站视频无水印下载</p>
+            <span class="badge">✓ 全平台支持</span>
+        </div>
+
+        <div class="input-group">
+            <label for="videoUrl">视频链接</label>
+            <div class="input-wrapper">
+                <input type="text" id="videoUrl" placeholder="粘贴抖音/TikTok/快手/B站分享链接..." />
+                <button class="btn btn-primary" onclick="parseVideo()">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="7 10 12 15 17 10"></polyline>
+                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                    </svg>
+                    解析视频
+                </button>
+            </div>
+        </div>
+
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p style="margin-top: 15px; color: #666;">正在解析中...</p>
+        </div>
+
+        <div class="message" id="message"></div>
+
+        <div class="video-container" id="videoContainer">
+            <video id="videoPlayer" class="video-player" controls>
+                您的浏览器不支持视频播放
+            </video>
+            <div class="video-info">
+                <h3 id="videoTitle">视频标题</h3>
+                <p id="videoAuthor">作者：加载中...</p>
+                <button class="download-btn" onclick="downloadVideo()">
+                    💾 下载无水印视频
+                </button>
+            </div>
+        </div>
+
+        <div class="info-box">
+            <h3>💡 使用说明</h3>
+            <ul>
+                <li>支持平台：抖音、TikTok、快手、B站</li>
+                <li>复制视频分享链接（包含文字也可以）</li>
+                <li>粘贴到输入框，点击"解析视频"</li>
+                <li>等待解析完成，即可在线观看或下载</li>
+                <li>支持短链接和完整链接</li>
+            </ul>
+        </div>
+
+        <div class="info-box" style="background: #e8f5e9; border-color: #4caf50;">
+            <h3>✨ 后端服务优势</h3>
+            <ul>
+                <li><strong>无CORS限制：</strong>后端直接请求，不受浏览器限制</li>
+                <li><strong>更高成功率：</strong>多API备用方案，确保解析成功</li>
+                <li><strong>稳定可靠：</strong>服务端处理，性能更好</li>
+                <li><strong>支持Sealos：</strong>一键部署到云端</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        let currentVideoData = null;
+
+        async function parseVideo() {
+            const videoUrl = document.getElementById('videoUrl').value.trim();
+            const loading = document.getElementById('loading');
+            const message = document.getElementById('message');
+            const videoContainer = document.getElementById('videoContainer');
+
+            // 清除之前的状态
+            message.classList.remove('show');
+            videoContainer.classList.remove('show');
+
+            if (!videoUrl) {
+                showMessage('请输入视频链接！', 'error');
+                return;
+            }
+
+            loading.classList.add('show');
+
+            try {
+                const response = await fetch('/api/parse', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ url: videoUrl })
+                });
+
+                const data = await response.json();
+                loading.classList.remove('show');
+
+                if (response.ok && data.success) {
+                    currentVideoData = data;
+                    displayVideo(data);
+                    showMessage('解析成功！', 'success');
+                } else {
+                    showMessage(data.error || '解析失败，请检查链接是否正确', 'error');
+                }
+            } catch (error) {
+                loading.classList.remove('show');
+                showMessage('网络错误：' + error.message, 'error');
+                console.error('Error:', error);
+            }
+        }
+
+        function displayVideo(data) {
+            const videoContainer = document.getElementById('videoContainer');
+            const videoPlayer = document.getElementById('videoPlayer');
+            const videoTitle = document.getElementById('videoTitle');
+            const videoAuthor = document.getElementById('videoAuthor');
+
+            videoPlayer.src = data.videoUrl;
+            videoPlayer.poster = data.thumbnail || '';
+            videoTitle.textContent = data.title;
+            videoAuthor.textContent = `作者：${data.author}`;
+
+            videoContainer.classList.add('show');
+            videoContainer.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+
+        function downloadVideo() {
+            if (!currentVideoData) {
+                showMessage('请先解析视频', 'error');
+                return;
+            }
+
+            const a = document.createElement('a');
+            a.href = currentVideoData.videoUrl;
+            a.download = currentVideoData.title + '.mp4';
+            a.target = '_blank';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+
+            showMessage('下载已开始！', 'success');
+        }
+
+        function showMessage(text, type) {
+            const message = document.getElementById('message');
+            message.textContent = text;
+            message.className = 'message show ' + type;
+            setTimeout(() => {
+                message.classList.remove('show');
+            }, 5000);
+        }
+
+        // 回车键提交
+        document.getElementById('videoUrl').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                parseVideo();
+            }
+        });
+    </script>
+</body>
+</html>
