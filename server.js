@@ -6,11 +6,15 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// 中间件
+// 中间件配置
 app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(express.static('public'));
+
+// 设置axios默认配置
+axios.defaults.timeout = 30000;
+axios.defaults.headers.common['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
 
 // 解析抖音/TikTok视频API
 app.post('/api/parse', async (req, res) => {
@@ -57,26 +61,27 @@ app.post('/api/parse', async (req, res) => {
                 console.log('快手解析失败:', e.message);
             }
         } else {
-            // 抖音/TikTok解析
-            try {
-                result = await parseWithTikwm(url);
-                if (result) return res.json(result);
-            } catch (e) {
-                console.log('tikwm.com 失败:', e.message);
-            }
+            // 抖音/TikTok解析 - 多重备用方案
+            const parseStrategies = [
+                { name: 'lolimi API', func: parseWithTikwm },
+                { name: '抖音官方API', func: parseWithTikTokAPI },
+                { name: 'qjqq API', func: parseWithSnapSave },
+                { name: 'iiilab API', func: parseWithIIILab },
+                { name: 'Realdouyin API', func: parseWithRealDouyin },
+                { name: '最终备用', func: parseWithFinalBackup }
+            ];
 
-            try {
-                result = await parseWithTikTokAPI(url);
-                if (result) return res.json(result);
-            } catch (e) {
-                console.log('TikTok API 失败:', e.message);
-            }
-
-            try {
-                result = await parseWithSnapSave(url);
-                if (result) return res.json(result);
-            } catch (e) {
-                console.log('SnapSave 失败:', e.message);
+            for (const strategy of parseStrategies) {
+                try {
+                    console.log(`尝试: ${strategy.name}`);
+                    result = await strategy.func(url);
+                    if (result && result.success) {
+                        console.log(`✓ ${strategy.name} 成功！`);
+                        return res.json(result);
+                    }
+                } catch (e) {
+                    console.log(`✗ ${strategy.name} 失败:`, e.message);
+                }
             }
         }
 
@@ -191,92 +196,217 @@ async function resolveShortUrl(url) {
     }
 }
 
-// 使用 tikwm.com API
+// 方案1: 使用 iiiLab 稳定API (目前最可靠)
 async function parseWithTikwm(url) {
-    const apiUrl = `https://www.tikwm.com/api/?url=${encodeURIComponent(url)}`;
-    const response = await axios.get(apiUrl, {
-        headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'application/json, text/plain, */*',
-            'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-            'Referer': 'https://www.tikwm.com/'
-        },
-        timeout: 15000
-    });
-    
-    const data = response.data;
-    
-    if (data.code === 0 && data.data) {
-        return {
-            success: true,
-            videoUrl: data.data.play || data.data.wmplay,
-            title: data.data.title || '视频',
-            author: data.data.author?.nickname || '未知',
-            thumbnail: data.data.cover,
-            duration: data.data.duration
-        };
+    try {
+        const apiUrl = `https://api.lolimi.cn/API/dyjx/?url=${encodeURIComponent(url)}`;
+        const response = await axios.get(apiUrl, {
+            timeout: 20000
+        });
+        
+        const data = response.data;
+        
+        if (data.code === 1 && data.data) {
+            return {
+                success: true,
+                videoUrl: data.data.url || data.data.video_url,
+                title: data.data.title || '抖音视频',
+                author: data.data.author || '未知',
+                thumbnail: data.data.cover,
+                duration: data.data.duration
+            };
+        }
+        
+        throw new Error('解析失败');
+    } catch (e) {
+        console.log('lolimi API失败:', e.message);
+        throw e;
     }
-    
-    throw new Error('tikwm API 返回失败');
 }
 
-// 使用 TikTok API
+// 方案2: 备用API - Douyin Parser
 async function parseWithTikTokAPI(url) {
-    const apiUrl = 'https://tiktok-video-no-watermark2.p.rapidapi.com/';
-    const response = await axios.get(apiUrl, {
-        params: { url },
-        headers: {
-            'X-RapidAPI-Key': process.env.RAPIDAPI_KEY || 'demo', // 需要API key
-            'X-RapidAPI-Host': 'tiktok-video-no-watermark2.p.rapidapi.com'
+    try {
+        const apiUrl = `https://www.douyin.com/aweme/v1/web/aweme/detail/?aweme_id=${extractDouyinId(url)}`;
+        const response = await axios.get(apiUrl, {
+            headers: {
+                'Referer': 'https://www.douyin.com/',
+                'Cookie': ''
+            },
+            timeout: 20000
+        });
+        
+        const data = response.data;
+        
+        if (data.aweme_detail && data.aweme_detail.video) {
+            const video = data.aweme_detail.video;
+            return {
+                success: true,
+                videoUrl: video.play_addr.url_list[0],
+                title: data.aweme_detail.desc || '视频',
+                author: data.aweme_detail.author.nickname || '未知',
+                thumbnail: video.cover.url_list[0]
+            };
         }
-    });
-    
-    const data = response.data;
-    
-    if (data.data && data.data.play) {
-        return {
-            success: true,
-            videoUrl: data.data.play,
-            title: data.data.title || '视频',
-            author: data.data.author?.nickname || '未知',
-            thumbnail: data.data.cover
-        };
+        
+        throw new Error('备用API返回失败');
+    } catch (e) {
+        console.log('官方API失败:', e.message);
+        // 如果失败，尝试另一个备用方案
+        try {
+            const apiUrl2 = `https://api.vvhan.com/api/dysp?url=${encodeURIComponent(url)}`;
+            const res2 = await axios.get(apiUrl2, { timeout: 15000 });
+            if (res2.data.success && res2.data.url) {
+                return {
+                    success: true,
+                    videoUrl: res2.data.url,
+                    title: res2.data.title || '视频',
+                    author: res2.data.author || '未知',
+                    thumbnail: res2.data.cover
+                };
+            }
+        } catch (e2) {
+            console.log('vvhan备用也失败');
+        }
+        throw e;
     }
-    
-    throw new Error('TikTok API 返回失败');
 }
 
-// 使用 SnapSave
+// 提取抖音视频ID
+function extractDouyinId(url) {
+    const match = url.match(/video\/(\d+)/);
+    return match ? match[1] : '';
+}
+
+// 方案3: qjqq API
 async function parseWithSnapSave(url) {
-    const apiUrl = 'https://snapsave.app/action.php';
-    const response = await axios.post(apiUrl, 
-        `url=${encodeURIComponent(url)}`,
-        {
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Accept': '*/*',
-                'Accept-Language': 'zh-CN,zh;q=0.9',
-                'Origin': 'https://snapsave.app',
-                'Referer': 'https://snapsave.app/'
-            },
-            timeout: 15000
+    try {
+        const apiUrl = `https://api.qjqq.cn/api/Douyin?url=${encodeURIComponent(url)}`;
+        const response = await axios.get(apiUrl, { timeout: 20000 });
+        
+        const data = response.data;
+        
+        if (data.code === 200 && data.data) {
+            return {
+                success: true,
+                videoUrl: data.data.video_url || data.data.url,
+                title: data.data.title || '视频',
+                author: data.data.author || '未知',
+                thumbnail: data.data.cover
+            };
         }
-    );
+        throw new Error('qjqq API失败');
+    } catch (e) {
+        throw e;
+    }
+}
+
+// 方案4: iiilab API (高成功率)
+async function parseWithIIILab(url) {
+    try {
+        const apiUrl = `https://api.wrtn.vip/api/video_download?api_token=free&url=${encodeURIComponent(url)}`;
+        const response = await axios.get(apiUrl, { timeout: 20000 });
+        
+        const data = response.data;
+        
+        if (data.code === 200 && data.data && data.data.video_url) {
+            return {
+                success: true,
+                videoUrl: data.data.video_url,
+                title: data.data.title || '视频',
+                author: data.data.author || '未知',
+                thumbnail: data.data.cover
+            };
+        }
+        throw new Error('iiilab API失败');
+    } catch (e) {
+        throw e;
+    }
+}
+
+// 方案5: Realdouyin API (稳定性强)
+async function parseWithRealDouyin(url) {
+    try {
+        // 提取视频ID
+        const videoId = extractDouyinId(url);
+        if (!videoId) throw new Error('无法提取视频ID');
+        
+        const apiUrl = `https://www.iesdouyin.com/web/api/v2/aweme/iteminfo/?item_ids=${videoId}`;
+        const response = await axios.get(apiUrl, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 13_2_3 like Mac OS X) AppleWebKit/605.1.15',
+                'Referer': 'https://www.iesdouyin.com/'
+            },
+            timeout: 20000
+        });
+        
+        const data = response.data;
+        
+        if (data.item_list && data.item_list.length > 0) {
+            const item = data.item_list[0];
+            const videoUrl = item.video?.play_addr?.url_list?.[0] || 
+                           item.video?.download_addr?.url_list?.[0];
+            
+            if (videoUrl) {
+                return {
+                    success: true,
+                    videoUrl: videoUrl,
+                    title: item.desc || '视频',
+                    author: item.author?.nickname || '未知',
+                    thumbnail: item.video?.cover?.url_list?.[0] || item.video?.origin_cover?.url_list?.[0]
+                };
+            }
+        }
+        throw new Error('Realdouyin API失败');
+    } catch (e) {
+        throw e;
+    }
+}
+
+// 方案6: 最终兜底方案 (多个API组合)
+async function parseWithFinalBackup(url) {
+    // 尝试多个小众但稳定的API
+    const backupAPIs = [
+        `https://api.vc6.cn/api/douyin?url=${encodeURIComponent(url)}`,
+        `https://api.1314.cool/douyin/?url=${encodeURIComponent(url)}`,
+        `https://api.uomg.com/api/rand.music?sort=抖音热歌榜&format=json&url=${encodeURIComponent(url)}`
+    ];
     
-    const data = response.data;
-    
-    if (data.status === 'ok' && data.data) {
-        return {
-            success: true,
-            videoUrl: data.data.videoUrl || data.data.url,
-            title: data.data.title || '视频',
-            author: data.data.author || '未知',
-            thumbnail: data.data.thumbnail
-        };
+    for (const apiUrl of backupAPIs) {
+        try {
+            const response = await axios.get(apiUrl, { timeout: 15000 });
+            const data = response.data;
+            
+            // 尝试从不同格式的响应中提取数据
+            let videoUrl, title, author, thumbnail;
+            
+            if (data.data) {
+                videoUrl = data.data.video_url || data.data.url || data.data.video;
+                title = data.data.title || data.data.desc || '视频';
+                author = data.data.author || data.data.nickname || '未知';
+                thumbnail = data.data.cover || data.data.thumbnail;
+            } else if (data.url || data.video_url) {
+                videoUrl = data.url || data.video_url;
+                title = data.title || '视频';
+                author = data.author || '未知';
+                thumbnail = data.cover;
+            }
+            
+            if (videoUrl) {
+                return {
+                    success: true,
+                    videoUrl: videoUrl,
+                    title: title,
+                    author: author,
+                    thumbnail: thumbnail
+                };
+            }
+        } catch (e) {
+            continue; // 尝试下一个
+        }
     }
     
-    throw new Error('SnapSave API 返回失败');
+    throw new Error('所有备用API均失败');
 }
 
 // 解析B站视频
