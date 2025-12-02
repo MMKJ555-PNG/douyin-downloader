@@ -1,82 +1,35 @@
-apiVersion: v1
-kind: Service
-metadata:
-  name: douyin-downloader
-spec:
-  type: ClusterIP
-  ports:
-    - port: 3000
-      targetPort: 3000
-      protocol: TCP
-  selector:
-    app: douyin-downloader
+name: Build and Push Docker Image
 
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: douyin-downloader
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: douyin-downloader
-  template:
-    metadata:
-      labels:
-        app: douyin-downloader
-    spec:
-      containers:
-      - name: douyin-downloader
-        image: your-registry/douyin-downloader:latest
-        ports:
-        - containerPort: 3000
-        env:
-        - name: PORT
-          value: "3000"
-        - name: NODE_ENV
-          value: "production"
-        resources:
-          requests:
-            memory: "128Mi"
-            cpu: "100m"
-          limits:
-            memory: "512Mi"
-            cpu: "500m"
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: 3000
-          initialDelaySeconds: 10
-          periodSeconds: 30
-        readinessProbe:
-          httpGet:
-            path: /health
-            port: 3000
-          initialDelaySeconds: 5
-          periodSeconds: 10
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
 
----
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: douyin-downloader
-  annotations:
-    kubernetes.io/ingress.class: nginx
-    cert-manager.io/cluster-issuer: letsencrypt-prod
-spec:
-  tls:
-  - hosts:
-    - your-domain.com
-    secretName: douyin-downloader-tls
-  rules:
-  - host: your-domain.com
-    http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: douyin-downloader
-            port:
-              number: 3000
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+    
+    - name: Login to Docker Hub
+      uses: docker/login-action@v2
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_TOKEN }}
+    
+    - name: Build and push
+      uses: docker/build-push-action@v4
+      with:
+        context: .
+        push: true
+        tags: ${{ secrets.DOCKER_USERNAME }}/douyin-downloader:latest
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+    
+    - name: Image digest
+      run: echo "Image pushed successfully!"
